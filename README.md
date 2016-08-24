@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/seahorn/sygspacer.svg?branch=master)](https://travis-ci.org/seahorn/sygspacer)
+
 # About
 
 Syntax based nvariant synthesis with Spacer
