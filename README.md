@@ -4,8 +4,7 @@ Syntax based nvariant synthesis with Spacer
 
 # Install
 
-* pip install pysmt
-
+* `pip install pysmt`
 * `cd sygspacer ; mkdir build ; cd build`
 * `cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=run  ../ ` 
 * `cmake --build .` to build sygspacer
