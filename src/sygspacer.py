@@ -31,6 +31,8 @@ TEST=\
 (declare-primed-var top.impl.usr.c1@0 Int)
 (declare-primed-var top.impl.usr.c2@0 Int)
 
+;; (declare-rel str_invariant Bool .... Int)
+
 (synth-inv str_invariant(
   (top.usr.inc@0 Bool)
   (top.usr.rst_c1@0 Bool)
@@ -40,8 +42,11 @@ TEST=\
   (top.usr.ok@0 Bool)
   (top.res.init_flag@0 Bool)
   (top.impl.usr.c1@0 Int)
-  (top.impl.usr.c2@0 Int) 
+  (top.impl.usr.c2@0 Int)
 ))
+
+;; (rule (=> (init_body  (str_invariant init_args))
+
 
 (define-fun
   init (
@@ -55,7 +60,7 @@ TEST=\
     (top.impl.usr.c1@0 Int)
     (top.impl.usr.c2@0 Int)
   ) Bool
-  
+
   (let
    ((X1 0))
    (let
@@ -76,9 +81,11 @@ TEST=\
      top.res.init_flag@0)))
 )
 
+;; (rule (=> ((and (str_invariant trans_args[0:init_args]) trans_body)  (str_invariant trans_args_primed[init_args:]))))
+
 (define-fun
   trans (
-    
+
     ;; Current state.
     (top.usr.inc@0 Bool)
     (top.usr.rst_c1@0 Bool)
@@ -89,7 +96,7 @@ TEST=\
     (top.res.init_flag@0 Bool)
     (top.impl.usr.c1@0 Int)
     (top.impl.usr.c2@0 Int)
-    
+
     ;; Next state.
     (top.usr.inc@1 Bool)
     (top.usr.rst_c1@1 Bool)
@@ -100,9 +107,9 @@ TEST=\
     (top.res.init_flag@1 Bool)
     (top.impl.usr.c1@1 Int)
     (top.impl.usr.c2@1 Int)
-  
+
   ) Bool
-  
+
   (let
    ((X1 top.impl.usr.c2@0))
    (let
@@ -123,6 +130,8 @@ TEST=\
      (not top.res.init_flag@1))))
 )
 
+;; (rule (=> (and (str_invariant prop_args) (not prop_body)) ERROR))
+
 (define-fun
   prop (
     (top.usr.inc@0 Bool)
@@ -135,7 +144,7 @@ TEST=\
     (top.impl.usr.c1@0 Int)
     (top.impl.usr.c2@0 Int)
   ) Bool
-  
+
   top.usr.ok@0
 )
 
@@ -152,9 +161,10 @@ class Spacer(object):
         self.fp = fp
         self.decl_primed_var = dict()
         self.define_fun = dict()
+        self.inv_constraint = dict()
         return
 
-    
+
     def setSolver(self):
         """Set the configuration for the solver"""
         self.fp.set (engine='spacer')
@@ -196,33 +206,40 @@ class Spacer(object):
                     sy_decl_primed_var.append(cmd)
                 elif cmd.name == 'define-fun':
                     sy_define_fun.append(cmd)
-            
+                elif cmd.name == 'inv-constraint':
+                    self.inv_constraint.update({'tgt':cmd.args[0],'init':cmd.args[1], 'trans':cmd.args[2], 'prop':cmd.args[3]})
+
+
 
         for cmd in sy_decl_primed_var:
             for l in cmd.args:
                 self.decl_primed_var.update({l.symbol_name(): l.symbol_type()})
-        
+
         for cmd in sy_define_fun:
             fun_name = cmd.args[0]
             fun_vars = cmd.args[1]
             self.define_fun.update({fun_name:fun_vars})
             formulas = cmd.args[3]
         return
-            
-                
-        
 
 
-    def declare_vars(self):
-        self.log.info("Declare variables ... ")
+
+
+
+    def declare_primed_vars(self):
+        self.log.info("Declare primed variables ... ")
         z3vars = []
         for v, typ in self.decl_primed_var.iteritems():
+            primed_var = v + "!"
             if typ.is_bool_type():
                 z3vars.append(z3.Bool(v))
+                z3vars.append(z3.Bool(primed_var))
             elif typ.is_int_type():
                 z3vars.append(z3.Int(v))
+                z3vars.append(z3.Int(primed_var))
             elif typ.is_real_type():
                 z3vars.append(z3.Real(v))
+                z3vars.append(z3.Real(primed_var))
             else:
                 assert false, 'Unsupported type: %s' % str(typ)
         self.fp.declare_var(z3vars)
@@ -230,7 +247,9 @@ class Spacer(object):
 
     def define_relations(self):
         self.log.info("Define relations ... ")
+        fun_decl = []
         for fun_name, vars in self.define_fun.iteritems():
+            print "processing.. " + fun_name
             z3vars = []
             z3Type =  []
             for v in vars:
@@ -249,19 +268,18 @@ class Spacer(object):
                     assert false, 'Unsupported type: %s' % str(typ)
             self.fp.declare_var(z3vars)
             fun = z3.Function(fun_name, z3Type)
-            self.fp.register_relation(fun)
-            
+            assert z3.is_func_decl(fun)
+            fun_decl.append(fun)
 
-        
-        
-            
+        # print fun_decl
+        # self.fp.register_relation(*[f.as_func_decl() for f in fun_decl])
+
+
+
+
+
     def solve(self):
         self.parse()
-        self.declare_vars()
+        self.declare_primed_vars()
         self.define_relations()
         return
-        
-
-
-
-
