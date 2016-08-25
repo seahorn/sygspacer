@@ -2,7 +2,7 @@
 
 # About
 
-Syntax based nvariant synthesis with Spacer
+Syntax-based invariant synthesis with Spacer
 
 # Install
 
