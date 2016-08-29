@@ -1,0 +1,8 @@
+(declare-var b Bool)
+(declare-var y Int)
+(declare-var z Int)
+(declare-var c Int)
+(declare-var x1 Int)
+(declare-var x2 Int)
+(declare-var x3 Int)
+(query ERROR)
