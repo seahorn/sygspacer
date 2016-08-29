@@ -13,155 +13,23 @@ from z3_utils import *
 from LogManager import LoggingManager
 from sygparser import SygSpacerParser
 import stats
-import cStringIO
+import cStringIO # Py2-Py3 Compatibility
 import utils
-from six.moves import cStringIO # Py2-Py3 Compatibility
+from pysmt.environment import get_env   
+from pysmt.smtlib.printers import SmtPrinter
 
-TEST=\
-"""
-(set-logic LIA)
-
-(declare-primed-var top.usr.inc@0 Bool)
-(declare-primed-var top.usr.rst_c1@0 Bool)
-(declare-primed-var top.usr.rst@0 Bool)
-(declare-primed-var top.usr.o1@0 Bool)
-(declare-primed-var top.usr.o2@0 Bool)
-(declare-primed-var top.usr.ok@0 Bool)
-(declare-primed-var top.res.init_flag@0 Bool)
-(declare-primed-var top.impl.usr.c1@0 Int)
-(declare-primed-var top.impl.usr.c2@0 Int)
-
-;; (declare-rel str_invariant Bool .... Int)
-
-(synth-inv str_invariant(
-  (top.usr.inc@0 Bool)
-  (top.usr.rst_c1@0 Bool)
-  (top.usr.rst@0 Bool)
-  (top.usr.o1@0 Bool)
-  (top.usr.o2@0 Bool)
-  (top.usr.ok@0 Bool)
-  (top.res.init_flag@0 Bool)
-  (top.impl.usr.c1@0 Int)
-  (top.impl.usr.c2@0 Int)
-))
-
-;; (rule (=> (init_body  (str_invariant init_args))
-
-
-(define-fun
-  init (
-    (top.usr.inc@0 Bool)
-    (top.usr.rst_c1@0 Bool)
-    (top.usr.rst@0 Bool)
-    (top.usr.o1@0 Bool)
-    (top.usr.o2@0 Bool)
-    (top.usr.ok@0 Bool)
-    (top.res.init_flag@0 Bool)
-    (top.impl.usr.c1@0 Int)
-    (top.impl.usr.c2@0 Int)
-  ) Bool
-
-  (let
-   ((X1 0))
-   (let
-    ((X2 0))
-    (and
-     (=
-      top.impl.usr.c2@0
-      (ite top.usr.rst@0 0 (ite (and top.usr.inc@0 (< X1 6)) (+ X1 1) X1)))
-     (=
-      top.impl.usr.c1@0
-      (ite
-       (or top.usr.rst_c1@0 top.usr.rst@0)
-       0
-       (ite (and top.usr.inc@0 (< X2 10)) (+ X2 1) X2)))
-     (= top.usr.o2@0 (= top.impl.usr.c2@0 6))
-     (= top.usr.o1@0 (= top.impl.usr.c1@0 10))
-     (= top.usr.ok@0 (=> top.usr.o1@0 top.usr.o2@0))
-     top.res.init_flag@0)))
-)
-
-;; (rule (=> ((and (str_invariant trans_args[0:init_args]) trans_body)  (str_invariant trans_args_primed[init_args:]))))
-
-(define-fun
-  trans (
-
-    ;; Current state.
-    (top.usr.inc@0 Bool)
-    (top.usr.rst_c1@0 Bool)
-    (top.usr.rst@0 Bool)
-    (top.usr.o1@0 Bool)
-    (top.usr.o2@0 Bool)
-    (top.usr.ok@0 Bool)
-    (top.res.init_flag@0 Bool)
-    (top.impl.usr.c1@0 Int)
-    (top.impl.usr.c2@0 Int)
-
-    ;; Next state.
-    (top.usr.inc@1 Bool)
-    (top.usr.rst_c1@1 Bool)
-    (top.usr.rst@1 Bool)
-    (top.usr.o1@1 Bool)
-    (top.usr.o2@1 Bool)
-    (top.usr.ok@1 Bool)
-    (top.res.init_flag@1 Bool)
-    (top.impl.usr.c1@1 Int)
-    (top.impl.usr.c2@1 Int)
-
-  ) Bool
-
-  (let
-   ((X1 top.impl.usr.c2@0))
-   (let
-    ((X2 top.impl.usr.c1@0))
-    (and
-     (=
-      top.impl.usr.c2@1
-      (ite top.usr.rst@1 0 (ite (and top.usr.inc@1 (< X1 6)) (+ X1 1) X1)))
-     (=
-      top.impl.usr.c1@1
-      (ite
-       (or top.usr.rst_c1@1 top.usr.rst@1)
-       0
-       (ite (and top.usr.inc@1 (< X2 10)) (+ X2 1) X2)))
-     (= top.usr.o2@1 (= top.impl.usr.c2@1 6))
-     (= top.usr.o1@1 (= top.impl.usr.c1@1 10))
-     (= top.usr.ok@1 (=> top.usr.o1@1 top.usr.o2@1))
-     (not top.res.init_flag@1))))
-)
-
-;; (rule (=> (and (str_invariant prop_args) (not prop_body)) ERROR))
-
-(define-fun
-  prop (
-    (top.usr.inc@0 Bool)
-    (top.usr.rst_c1@0 Bool)
-    (top.usr.rst@0 Bool)
-    (top.usr.o1@0 Bool)
-    (top.usr.o2@0 Bool)
-    (top.usr.ok@0 Bool)
-    (top.res.init_flag@0 Bool)
-    (top.impl.usr.c1@0 Int)
-    (top.impl.usr.c2@0 Int)
-  ) Bool
-
-  top.usr.ok@0
-)
-
-(inv-constraint str_invariant init trans prop)
-
-(check-synth)
-
-"""
+import test
 
 class Spacer(object):
     def __init__(self, args, ctx, fp):
         self.log = LoggingManager.get_logger(__name__)
         self.args = args
         self.fp = fp
-        self.decl_primed_var = dict()
+        self.decl_primed_var = list()
         self.define_fun = dict()
-        self.inv_constraint = dict()
+        self.all = dict()
+        self.synth_inv = dict() # invariants to be synthesized
+        self.allVars = dict()
         return
 
 
@@ -176,11 +44,8 @@ class Spacer(object):
         self.fp.set('pdr.flexible_trace',True)
         self.fp.set('reset_obligation_queue',False)
         self.fp.set('spacer.elim_aux',False)
-        if self.args.eldarica: self.fp.set('print_fixedpoint_extensions', False)
+        self.fp.set('print_fixedpoint_extensions', False)
         if self.args.utvpi: self.fp.set('pdr.utvpi', False)
-        if self.args.tosmt:
-            self.log.info("Setting low level printing")
-            self.fp.set ('print.low_level_smt2',True)
         if not self.args.pp:
             self.log.info("No pre-processing")
             self.fp.set ('xform.slice', False)
@@ -193,93 +58,214 @@ class Spacer(object):
         """ Parse Sygus file """
         fi = self.args.file
         self.log.info("Parsing ... " + str(fi))
-        sygus = ""
-        sy_decl_primed_var = []
-        sy_define_fun = []
-        with utils.stats.timer('Parsing'):
-            with open(fi, "r") as infile:
-                sygus = infile.read()
-            parser = SygSpacerParser()
-            script = parser.get_script(TEST)
-            for cmd in script:
-                if cmd.name == 'declare-primed-var':
-                    sy_decl_primed_var.append(cmd)
-                elif cmd.name == 'define-fun':
-                    sy_define_fun.append(cmd)
-                elif cmd.name == 'inv-constraint':
-                    self.inv_constraint.update({'tgt':cmd.args[0],'init':cmd.args[1], 'trans':cmd.args[2], 'prop':cmd.args[3]})
+        sy_define_fun, sy_synth_inv, sy_inv_const = list(), list(), list()
+        parser = SygSpacerParser()
+        
+        script = parser.get_script_fname(fi)
+            
+        for cmd in script:
+            if cmd.name == 'declare-primed-var':
+                self.decl_primed_var.append(cmd.args[0])
+            elif cmd.name == 'define-fun':
+                sy_define_fun.append(cmd)
+            elif cmd.name == 'inv-constraint':
+                sy_inv_const.append(cmd)
+            elif cmd.name == 'synth-inv':
+                sy_synth_inv.append(cmd)
+            # else:
+            #     assert False, 'Unknown commands %s' % cmd.name
 
-
-
-        for cmd in sy_decl_primed_var:
-            for l in cmd.args:
-                self.decl_primed_var.update({l.symbol_name(): l.symbol_type()})
-
+        # store all the invariants to be synthesized
+        for cmd in sy_synth_inv:
+            self.synth_inv.update({cmd.args[0]:cmd.args[1]})
+                
+        # store all the define fun
         for cmd in sy_define_fun:
             fun_name = cmd.args[0]
             fun_vars = cmd.args[1]
-            self.define_fun.update({fun_name:fun_vars})
-            formulas = cmd.args[3]
-        return
+            self.define_fun.update({fun_name:cmd.args[1:]})
+        
+        # build the dictionary for the all parse
+        for cmd in sy_inv_const:
+            try:
+                inv_name = cmd.args[0]
+                inv_vars = self.synth_inv[inv_name]
+                init = self.define_fun[cmd.args[1]]
+                trans = self.define_fun[cmd.args[2]]
+                prop = self.define_fun[cmd.args[3]]
+                init.append(cmd.args[1])
+                trans.append(cmd.args[2])
+                prop.append(cmd.args[3])
+                self.all.update({inv_name : {'vars': inv_vars, 'init':init, 'trans':trans, 'prop':prop}})
+            except Exception as e:
+                self.log.error(str(e) + " definition not found")
 
-
-
-
-
-    def declare_primed_vars(self):
-        self.log.info("Declare primed variables ... ")
-        z3vars = []
-        for v, typ in self.decl_primed_var.iteritems():
-            primed_var = v + "!"
-            if typ.is_bool_type():
-                z3vars.append(z3.Bool(v))
-                z3vars.append(z3.Bool(primed_var))
-            elif typ.is_int_type():
-                z3vars.append(z3.Int(v))
-                z3vars.append(z3.Int(primed_var))
-            elif typ.is_real_type():
-                z3vars.append(z3.Real(v))
-                z3vars.append(z3.Real(primed_var))
+    def declareVars(self, vars):
+        """ Declare Vars"""
+        decl_vars = list()
+        d_var = "(declare-var %s %s)"
+        for v in vars:
+            var_type = v.symbol_type()
+            var_name = v.symbol_name()
+            if var_type.is_bool_type():
+                decl_vars.append(d_var % (var_name, 'Bool'))
+            elif var_type.is_int_type():
+                decl_vars.append(d_var % (var_name, 'Int'))
+            elif var_type.is_real_type():
+                decl_vars.append(d_var % (var_name, 'Real'))
             else:
                 assert false, 'Unsupported type: %s' % str(typ)
-        self.fp.declare_var(z3vars)
+        return decl_vars
 
+    def _typString(self, typ):
+        z3types = list()
+        for t in typ:
+            var_type = t.symbol_type()
+            if var_type.is_bool_type():
+                z3types.append('Bool')
+            elif var_type.is_int_type():
+                z3types.append('Int')
+            elif var_type.is_real_type():
+                z3types.append('Real')
+            else:
+                assert false, 'Unsupported type: %s' % str(typ)
+        return z3types
+              
 
-    def define_relations(self):
-        self.log.info("Define relations ... ")
-        fun_decl = []
-        for fun_name, vars in self.define_fun.iteritems():
-            print "processing.. " + fun_name
-            z3vars = []
-            z3Type =  []
-            for v in vars:
-                var_name = v.symbol_name()
-                var_type = v.symbol_type()
-                if var_type.is_bool_type():
-                    z3vars.append(z3.Bool(var_name))
-                    z3Type.append(z3.BoolSort())
-                elif var_type.is_int_type():
-                    z3vars.append(z3.Int(var_name))
-                    z3Type.append(z3.IntSort())
-                elif var_type.is_real_type():
-                    z3vars.append(z3.Real(var_name))
-                    z3Type.append(z3.RealSort())
-                else:
-                    assert false, 'Unsupported type: %s' % str(typ)
-            self.fp.declare_var(z3vars)
-            fun = z3.Function(fun_name, z3Type)
-            assert z3.is_func_decl(fun)
-            fun_decl.append(fun)
+    def mkInit(self, inv, inv_args, init_def):
+        init_args = init_def[0]
+        init_name = init_def[3]
+        # check that the number of inv_args and init_args are the same
+        assert inv_args == len(init_args) , 'args(%s) != args(%s)' % (inv, init_name)
+        init_body = init_def[2]
+        args_str = ' '.join(str(x) for x in init_args)
+        buf_out = cStringIO.StringIO()
+        p = SmtPrinter(buf_out)
+        p.printer(init_body)
+        body_str  = buf_out.getvalue()       
+        rule = "(rule (=> %s  (%s %s)))" % (body_str, inv, args_str)
+        return rule
 
-        # print fun_decl
-        # self.fp.register_relation(*[f.as_func_decl() for f in fun_decl])
+    def mkTrans(self, inv, inv_args, trans_def):
+        trans_name = trans_def[3]
+        trans_args = trans_def[0]
+           # check that the number of inv_args*2 and init_args are the same
+        assert (inv_args*2) == len(trans_args) , 'args(%s) != args(%s)' % (inv, trans_name)
+        unprimed_args = trans_args[0:inv_args]
+        primed_args = trans_args[inv_args:]
+        decl_vars = self.declareVars(primed_args)
+        self.allVars.update({'primed_var':decl_vars})
+        trans_body = trans_def[2]
+        primed_str = ' '.join(str(x) for x in primed_args)
+        unprimed_str = ' '.join(str(x) for x in unprimed_args)
+        inv_primed = "(%s %s)" % (inv, primed_str)
+        inv_unprimed = "(%s %s)" % (inv, unprimed_str)
+        buf_out = cStringIO.StringIO()
+        p = SmtPrinter(buf_out)
+        p.printer(trans_body)
+        body_str  = buf_out.getvalue()       
+        rule = "(rule (=> (and %s %s) %s))" % (inv_unprimed, body_str, inv_primed)
+        return rule
 
+    def mkProp(self, inv, inv_args, prop_def):
+        prop_name = prop_def[3]
+        prop_args = prop_def[0]
+           # check that the number of inv_args*2 and init_args are the same
+        assert (inv_args) == len(prop_args) , 'args(%s) != args(%s)' % (inv, prop_name)
+        # (rule (=> (and (str_invariant prop_args) (not prop_body)) ERROR))
+        prop_body = prop_def[2]
+        arg_str = ' '.join(str(x) for x in prop_args)
+        inv_str = "(%s %s)" % (inv, arg_str)
+        buf_out = cStringIO.StringIO()
+        p = SmtPrinter(buf_out)
+        p.printer(prop_body)
+        body_str = buf_out.getvalue()       
+        rule = "(rule (=> (and %s (not %s)) ERROR))" % (inv_str, body_str)
+        return rule
+        
+                            
+    def mkSynthInv(self, inv, vars):
+        """ Make a function declaration of invariant to be synthesized """
+        z3types_str = self._typString(vars)
+        inv_decl = '(declare-rel %s (%s))' % (inv, ' '.join(x for x in z3types_str))
+        error_decl = '(declare-rel ERROR () )'
+        return {'inv_decl': inv_decl, 'error':error_decl}
 
-
-
-
-    def solve(self):
+    def processInv(self):
+        """ Process all the invriants to be synthesized """
+        inv_rules = dict()
+        for inv, tbp in self.all.iteritems():
+            self.log.info('Rules for  ... ' + inv)
+            inv_args = tbp['vars']
+            inv_dict = self.mkSynthInv(inv, inv_args)
+            init_rule = self.mkInit(inv, len(inv_args), tbp['init'])
+            trans_rule = self.mkTrans(inv, len(inv_args), tbp['trans'])
+            prop_rule = self.mkProp(inv, len(inv_args), tbp['prop'])
+            inv_rules.update({inv:{'init_rule':init_rule,
+                                   'trans_rule':trans_rule,
+                                   'prop_rule':prop_rule,
+                                   'inv_decl':inv_dict['inv_decl'],
+                                   'error':inv_dict['error']}})
+        return inv_rules
+                          
+            
+    def toHorn(self):
+        """ From Sygus format to Horn Clauses """
         self.parse()
-        self.declare_primed_vars()
-        self.define_relations()
+        inv_rules = self.processInv()
+        decl_vars = self.declareVars(self.decl_primed_var)
+        self.allVars.update({'unprimed':decl_vars})
+        horn = ""
+        for k, vars in self.allVars.iteritems():
+            horn +='\n'.join(x for x in vars) + '\n'
+        for inv, rule in inv_rules.iteritems():
+            horn += rule['inv_decl'] + '\n'
+            horn += rule['error'] + '\n'
+            horn += '\n; init rule for %s' % inv + '\n'
+            horn += rule['init_rule'] + '\n'
+            horn += '\n; trans rule for %s' % inv +'\n'
+            horn += rule['trans_rule'] +'\n'
+            horn += '\n; prop rule for %s' % inv +'\n'
+            horn += rule['prop_rule'] + '\n'
+        horn += '(query ERROR)'
+        horn_file = self.args.file + '.smt2'
+        self.log.info("Writing into ... " + horn_file)
+        with open(horn_file, "w") as f:
+            f.write(horn)
+        if self.args.solve: self.solve(horn_file)
         return
+
+    
+    def solve(self, horn_file):
+        """ Solve directly """
+        self.setSolver()
+        with utils.stats.timer ('Parse'):
+            q = self.fp.parse_file (horn_file)
+        preds = utils.fp_get_preds(self.fp)
+        with utils.stats.timer ('Query'):
+            res = self.fp.query (q[0])
+            if res == z3.sat:
+                utils.stat ('Result', 'CEX')
+            elif res == z3.unsat:
+                utils.stat ('Result', 'SAFE')
+                self.printInv(preds)
+            else:
+                utils.stat ('Result', 'UNK')
+        stats.brunch_print()
+        return
+
+    def printInv(self, preds):
+        """ Get unprocessed invariants """
+        self.log.info('Getting Invariants ... ')
+        for p in preds:
+            if str(p.decl()) != 'ERROR':
+                invs = utils.fp_get_cover_delta(self.fp, p)
+                print "----------------------------"
+                print "Predicate: " + str(p)
+                print "Invariants: \n\t" + str(invs)
+                print "----------------------------"
+
+
+
+
+

@@ -29,6 +29,8 @@ def parseArgs (argv):
                     default=False, dest="utvpi")
     p.add_argument ('--timeout', help='Timeout',
                     type=float, default=20.0, dest="timeout")
+    p.add_argument ('--solve', help='Solve Directly', action='store_true',
+                    default=False, dest="solve")
     pars = p.parse_args (argv)
     return pars
 
@@ -43,7 +45,7 @@ def main (args):
     ctx = z3.Context ()
     fp = z3.Fixedpoint (ctx=ctx)
     spacer = Spacer(args,ctx,fp)
-    spacer.solve()
+    spacer.toHorn()
 
 
 if __name__ == '__main__':

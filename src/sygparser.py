@@ -64,13 +64,88 @@ class SygSpacerParser(SmtLibParser):
 
 
 
+
+TEST = """
+
+(synth-inv str_invariant(
+  (top.usr.inc@0 Bool)
+  (top.usr.rst_c1@0 Bool)
+  (top.usr.rst@0 Bool)
+  (top.usr.o1@0 Bool)
+  (top.usr.o2@0 Bool)
+  (top.usr.ok@0 Bool)
+  (top.res.init_flag@0 Bool)
+  (top.impl.usr.c1@0 Int)
+  (top.impl.usr.c2@0 Int)
+))
+
+(define-fun
+  init (
+    (top.usr.inc@0 Bool)
+    (top.usr.rst_c1@0 Bool)
+    (top.usr.rst@0 Bool)
+    (top.usr.o1@0 Bool)
+    (top.usr.o2@0 Bool)
+    (top.usr.ok@0 Bool)
+    (top.res.init_flag@0 Bool)
+    (top.impl.usr.c1@0 Int)
+    (top.impl.usr.c2@0 Int)
+  ) Bool
+
+  (let
+   ((X1 0))
+   (let
+    ((X2 0))
+    (and
+     (=
+      top.impl.usr.c2@0
+      (ite top.usr.rst@0 0 (ite (and top.usr.inc@0 (< X1 6)) (+ X1 1) X1)))
+     (=
+      top.impl.usr.c1@0
+      (ite
+       (or top.usr.rst_c1@0 top.usr.rst@0)
+       0
+       (ite (and top.usr.inc@0 (< X2 10)) (+ X2 1) X2)))
+     (= top.usr.o2@0 (= top.impl.usr.c2@0 6))
+     (= top.usr.o1@0 (= top.impl.usr.c1@0 10))
+     (= top.usr.ok@0 (=> top.usr.o1@0 top.usr.o2@0))
+     top.res.init_flag@0)))
+)
+"""
+
 # parser = SygSpacerParser()
 
-# script = parser.get_script(cStringIO(SYGUS))
+# script = parser.get_script(cStringIO(TEST))
 
+# from pysmt.shortcuts import ForAll, Function, Implies, Symbol
+# from pysmt.typing import FunctionType, BOOL, INT, REAL
 
+# inv_name = None
 # for cmd in script:
-#     print(cmd.name)
-# print("*"*50)
+#     if cmd.name == 'synth-inv':
+#         inv_name = cmd.args[0]
+    
+# import cStringIO
+# from pysmt.smtlib.printers import SmtPrinter
+# buf_out = cStringIO.StringIO()
+
+# p = SmtPrinter(buf_out)
+
+# for cmd in script:    
+#     if cmd.name == 'define-fun':
+#         p.printer(cmd.args[3])
+#         print(buf_out.getvalue())
+        # typ = [c.symbol_type() for c in cmd.args[1]]
+        # func_type = FunctionType(BOOL, typ)
+        # inv_name = Symbol('inv', func_type)
+        # inv = Function(inv_name, cmd.args[1])
+        # implies = Implies(cmd.args[3], inv)
+        # forall = ForAll(cmd.args[1], implies)
+        # print forall.serialize()
+
+  
+        
+
+
 
 
