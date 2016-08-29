@@ -26,7 +26,8 @@ script:
   - /usr/bin/cmake --build . --target install 
   - cd ..
   - ls build/run/bin
-  - ./build/run/bin/sygspacer -h 
+  - ./build/run/bin/sygspacer -h
+  - ./build/run/bin/sygspacer ../test/counters.sl
 
 
 
