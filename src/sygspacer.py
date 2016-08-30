@@ -15,9 +15,9 @@ from sygparser import SygSpacerParser
 import stats
 import cStringIO # Py2-Py3 Compatibility
 import utils
-from pysmt.environment import get_env   
+from pysmt.environment import get_env
 from pysmt.smtlib.printers import SmtPrinter
-
+import subprocess as sub
 import test
 
 class Spacer(object):
@@ -30,28 +30,41 @@ class Spacer(object):
         self.all = dict()
         self.synth_inv = dict() # invariants to be synthesized
         self.allVars = dict()
+        if not self.args.verbose: LoggingManager.disable_logger()
         return
 
 
-    def setSolver(self):
-        """Set the configuration for the solver"""
-        self.fp.set (engine='spacer')
-        if self.args.stat:
-            self.fp.set('print_statistics',True)
-        if self.args.spacer_verbose:
-             z3.set_option (verbose=1)
-        self.fp.set('use_heavy_mev',True)
-        self.fp.set('pdr.flexible_trace',True)
-        self.fp.set('reset_obligation_queue',False)
-        self.fp.set('spacer.elim_aux',False)
-        self.fp.set('print_fixedpoint_extensions', False)
-        if self.args.utvpi: self.fp.set('pdr.utvpi', False)
-        if not self.args.pp:
-            self.log.info("No pre-processing")
-            self.fp.set ('xform.slice', False)
-            self.fp.set ('xform.inline_linear',False)
-            self.fp.set ('xform.inline_eager',False)
-        return
+    def isexec (self, fpath):
+        """ check if program is executable"""
+        if fpath == None: return False
+        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+
+    def which(self,program):
+        """ check locaton of a program"""
+        fpath, fname = os.path.split(program)
+        if fpath:
+            if isexec (program):
+                return program
+        else:
+            for path in os.environ["PATH"].split(os.pathsep):
+                exe_file = os.path.join(path, program)
+                if isexec (exe_file):
+                    return exe_file
+        return None
+
+    def getSpacer(self):
+        """ Get the binary location for Spacer"""
+        spacer = None
+        if not self.isexec (spacer):
+            root = os.path.dirname(os.path.realpath(__file__))
+            bin = os.path.abspath (os.path.join(root, '..', '..', '..','bin'))
+            spacer = os.path.join (bin, "z3")
+        if not self.isexec (spacer):
+            raise IOError ("Cannot find Spacer")
+        return spacer
+
+
 
 
     def parse(self):
@@ -60,9 +73,9 @@ class Spacer(object):
         self.log.info("Parsing ... " + str(fi))
         sy_define_fun, sy_synth_inv, sy_inv_const = list(), list(), list()
         parser = SygSpacerParser()
-        
+
         script = parser.get_script_fname(fi)
-            
+
         for cmd in script:
             if cmd.name == 'declare-primed-var':
                 self.decl_primed_var.append(cmd.args[0])
@@ -78,13 +91,13 @@ class Spacer(object):
         # store all the invariants to be synthesized
         for cmd in sy_synth_inv:
             self.synth_inv.update({cmd.args[0]:cmd.args[1]})
-                
+
         # store all the define fun
         for cmd in sy_define_fun:
             fun_name = cmd.args[0]
             fun_vars = cmd.args[1]
             self.define_fun.update({fun_name:cmd.args[1:]})
-        
+
         # build the dictionary for the all parse
         for cmd in sy_inv_const:
             try:
@@ -130,7 +143,7 @@ class Spacer(object):
             else:
                 assert false, 'Unsupported type: %s' % str(typ)
         return z3types
-              
+
 
     def mkInit(self, inv, inv_args, init_def):
         init_args = init_def[0]
@@ -142,7 +155,7 @@ class Spacer(object):
         buf_out = cStringIO.StringIO()
         p = SmtPrinter(buf_out)
         p.printer(init_body)
-        body_str  = buf_out.getvalue()       
+        body_str  = buf_out.getvalue()
         rule = "(rule (=> %s  (%s %s)))" % (body_str, inv, args_str)
         return rule
 
@@ -163,7 +176,7 @@ class Spacer(object):
         buf_out = cStringIO.StringIO()
         p = SmtPrinter(buf_out)
         p.printer(trans_body)
-        body_str  = buf_out.getvalue()       
+        body_str  = buf_out.getvalue()
         rule = "(rule (=> (and %s %s) %s))" % (inv_unprimed, body_str, inv_primed)
         return rule
 
@@ -179,11 +192,11 @@ class Spacer(object):
         buf_out = cStringIO.StringIO()
         p = SmtPrinter(buf_out)
         p.printer(prop_body)
-        body_str = buf_out.getvalue()       
+        body_str = buf_out.getvalue()
         rule = "(rule (=> (and %s (not %s)) ERROR))" % (inv_str, body_str)
         return rule
-        
-                            
+
+
     def mkSynthInv(self, inv, vars):
         """ Make a function declaration of invariant to be synthesized """
         z3types_str = self._typString(vars)
@@ -207,8 +220,8 @@ class Spacer(object):
                                    'inv_decl':inv_dict['inv_decl'],
                                    'error':inv_dict['error']}})
         return inv_rules
-                          
-            
+
+
     def toHorn(self):
         """ From Sygus format to Horn Clauses """
         self.parse()
@@ -232,10 +245,12 @@ class Spacer(object):
         self.log.info("Writing into ... " + horn_file)
         with open(horn_file, "w") as f:
             f.write(horn)
-        if self.args.solve: self.solve(horn_file)
+        if self.args.solve:
+            if self.args.syg: self.solve(horn_file)
+            else: self.runSpacer(horn_file)
         return
 
-    
+
     def solve(self, horn_file):
         """ Solve directly """
         self.setSolver()
@@ -267,5 +282,49 @@ class Spacer(object):
 
 
 
+    def setSolver(self):
+        """Set the configuration for the solver"""
+        self.fp.set (engine='spacer')
+
+        self.fp.set('print_statistics',True)
+        if self.args.spacer_verbose:
+             z3.set_option (verbose=1)
+        self.fp.set('use_heavy_mev',True)
+        self.fp.set('pdr.flexible_trace',True)
+        self.fp.set('reset_obligation_queue',False)
+        self.fp.set('spacer.elim_aux',False)
+        self.fp.set('print_fixedpoint_extensions', False)
+        if self.args.utvpi: self.fp.set('pdr.utvpi', False)
+        if not self.args.pp:
+            self.log.info("No pre-processing")
+            self.fp.set ('xform.slice', False)
+            self.fp.set ('xform.inline_linear',False)
+            self.fp.set ('xform.inline_eager',False)
+        return
 
 
+    def runSpacer (self, in_name):
+        """ Run Spacer """
+        stats =  ["fixedpoint.print_statistics=true"] if self.args.stat else []
+        utvpi =  ["pdr.utvpi=false"] if self.args.stat else []
+        spacer_args = [self.getSpacer (),
+                       "fixedpoint.xform.slice=false",
+                       "fixedpoint.xform.inline_linear=false",
+                       "fixedpoint.xform.inline_eager=false",
+                       "fixedpoint.use_heavy_mev=true",
+                       "fixedpoint.print_fixedpoint_extensions=false",
+	               "fixedpoint.pdr.flexible_trace=true",
+	               "fixedpoint.reset_obligation_queue=true",
+                       "fixedpoint.print_answer=true",
+                       "-v:1",
+                       "fixedpoint.engine=spacer"] + stats + utvpi + [in_name]
+        if self.args.verbose: print ' '.join (spacer_args)
+        utils.stat ('Result', 'UNKNOWN')
+        result = None
+        try:
+            p = sub.Popen (spacer_args, shell=False, stdout=sub.PIPE, stderr=sub.STDOUT)
+            result,_ = p.communicate()
+            with open(in_name+"_result.txt", "w") as f:
+                f.write(result)
+        except Exception as e:
+            print str(e)

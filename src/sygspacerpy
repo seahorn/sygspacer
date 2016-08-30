@@ -25,6 +25,8 @@ def parseArgs (argv):
     p.add_argument ('--spacer_verbose', help='Spacer Verbose', action='store_true', default= False, dest='spacer_verbose')
     p.add_argument ('--ri', dest='ri', default=False, action='store_true',
                     help='Get Raw Invariants')
+    p.add_argument ('--syg', dest='syg', default=False, action='store_true',
+                    help='Sygus')
     p.add_argument ('--no-dl', help='Disable Difference Logic (UTVPI) in SPACER', action='store_true',
                     default=False, dest="utvpi")
     p.add_argument ('--timeout', help='Timeout',
@@ -62,7 +64,6 @@ if __name__ == '__main__':
     if os.path.isdir (path): sys.path.insert(0, path)
     z3_path = os.path.abspath (os.path.join(path, '..', '..', '..', 'lib', 'z3py'))
     if os.path.isdir (z3_path):   sys.path.insert(0, z3_path)
-    print path
     import stats
     args = parseArgs(sys.argv[1:])
     try:
